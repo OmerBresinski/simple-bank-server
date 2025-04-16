@@ -181,42 +181,71 @@ const getTransactions: RequestHandler = async (req, res, next) => {
 // Truelayer endpoints
 const createTruelayerAuthLink: RequestHandler = async (req, res, next) => {
   try {
-    const response = await axios.post(
-      `${TRUELAYER_BASE_URL}/connect/token`,
-      {
-        client_id: process.env.TRUELAYER_CLIENT_ID,
-        client_secret: process.env.TRUELAYER_CLIENT_SECRET,
-        grant_type: "client_credentials",
-        scope:
-          "accounts balance transactions direct_debits standing_orders cards",
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    console.log("=== Starting Truelayer Auth Link Creation ===");
+    console.log("1. Checking environment variables...");
 
-    const accessToken = response.data.access_token;
+    // Validate required environment variables
+    const requiredEnvVars = [
+      "TRUELAYER_CLIENT_ID",
+      "TRUELAYER_CLIENT_SECRET",
+      "TRUELAYER_REDIRECT_URI",
+      "TRUELAYER_ENV",
+    ];
+
+    const missingVars = requiredEnvVars.filter(
+      (varName) => !process.env[varName]
+    );
+    if (missingVars.length > 0) {
+      throw new Error(
+        `Missing required environment variables: ${missingVars.join(", ")}`
+      );
+    }
+
+    console.log("Environment variables check passed");
+    console.log("TRUELAYER_ENV:", process.env.TRUELAYER_ENV);
+    console.log("TRUELAYER_BASE_URL:", TRUELAYER_BASE_URL);
+
+    // Generate the auth URL directly - no token needed for initial auth
+    console.log("2. Generating auth URL...");
+    const nonce = Math.random().toString(36).substring(2, 15);
+    const state = Math.random().toString(36).substring(2, 15);
 
     const authUrl =
-      `${TRUELAYER_BASE_URL}/connect/auth?` +
+      `${TRUELAYER_BASE_URL}/auth?` +
       new URLSearchParams({
-        client_id: process.env.TRUELAYER_CLIENT_ID!,
-        scope:
-          "accounts balance transactions direct_debits standing_orders cards",
         response_type: "code",
+        client_id: process.env.TRUELAYER_CLIENT_ID!,
+        scope: "info accounts balance cards transactions",
         redirect_uri: process.env.TRUELAYER_REDIRECT_URI!,
         providers: "uk-ob-all uk-oauth-all",
-      });
+        state,
+        nonce,
+      }).toString();
 
-    res.json({ authUrl, accessToken });
+    console.log("3. Auth URL generated successfully:", authUrl);
+    console.log("=== Truelayer Auth Link Creation Complete ===");
+
+    res.json({ authUrl });
   } catch (error: any) {
-    console.error(
-      "Truelayer Auth Error:",
-      error.response?.data || error.message
-    );
-    res.status(500).json({ error: "Failed to create Truelayer auth link" });
+    console.error("=== Truelayer Auth Link Creation Failed ===");
+    console.error("Error details:", {
+      name: error.name,
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      stack: error.stack,
+    });
+
+    if (error.response?.data) {
+      console.error("Truelayer API Error:", error.response.data);
+    }
+
+    res.status(500).json({
+      error: "Failed to create Truelayer auth link",
+      details: error.response?.data || error.message,
+      status: error.response?.status,
+    });
   }
 };
 
