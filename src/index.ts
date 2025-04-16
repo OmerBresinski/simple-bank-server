@@ -178,12 +178,23 @@ const getTruelayerTransactions: RequestHandler = async (req, res, next) => {
     const startOfCurrentMonth = new Date(
       Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
     );
-    const endDate = new Date();
 
-    // Format dates to ISO string without timezone offset
-    const from =
-      startOfCurrentMonth.toISOString().split("T")[0] + "T00:00:00.000Z";
-    const to = endDate.toISOString().split("T")[0] + "T23:59:59.999Z";
+    // Use current time minus 1 minute for end date
+    const endDate = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        now.getUTCHours(),
+        now.getUTCMinutes() - 1, // Subtract 1 minute
+        now.getUTCSeconds(),
+        now.getUTCMilliseconds()
+      )
+    );
+
+    // Format dates to ISO string
+    const from = startOfCurrentMonth.toISOString();
+    const to = endDate.toISOString();
 
     console.log("Fetching transactions with date range:", { from, to });
 
