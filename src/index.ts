@@ -15,27 +15,6 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Initialize Plaid client
-console.log("=== Initializing Plaid Client ===");
-const plaidEnv = process.env.PLAID_ENV as keyof typeof PlaidEnvironments;
-if (!PlaidEnvironments[plaidEnv]) {
-  console.error(`Invalid Plaid environment: ${plaidEnv}`);
-  process.exit(1);
-}
-
-console.log(`Plaid environment: ${plaidEnv}`);
-const configuration = new Configuration({
-  basePath: PlaidEnvironments[plaidEnv],
-  baseOptions: {
-    headers: {
-      "PLAID-CLIENT-ID": process.env.PLAID_CLIENT_ID,
-      "PLAID-SECRET": process.env.PLAID_SECRET,
-    },
-  },
-});
-const plaidClient = new PlaidApi(configuration);
-console.log("Plaid client initialized successfully");
-
 // Truelayer configuration
 const TRUELAYER_AUTH_URL =
   process.env.TRUELAYER_ENV === "production"
