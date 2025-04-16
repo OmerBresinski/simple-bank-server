@@ -333,11 +333,28 @@ const getTruelayerTransactions: RequestHandler = async (req, res, next) => {
   try {
     const { accessToken, accountId } = req.body;
 
+    // Calculate current month's date range
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    // Calculate start of current month
+    const startOfCurrentMonth = new Date(currentYear, currentMonth, 1);
+    startOfCurrentMonth.setHours(0, 0, 0, 0);
+
+    // Use current date instead of end of month
+    const endDate = new Date(now);
+    endDate.setHours(23, 59, 59, 999);
+
     const response = await axios.get(
       `${TRUELAYER_API_URL}/data/v1/accounts/${accountId}/transactions`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
+        },
+        params: {
+          from: startOfCurrentMonth.toISOString(),
+          to: endDate.toISOString(),
         },
       }
     );
