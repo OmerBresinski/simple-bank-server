@@ -204,28 +204,34 @@ const createTruelayerAuthLink: RequestHandler = async (req, res, next) => {
     console.log("Environment variables check passed");
     console.log("TRUELAYER_ENV:", process.env.TRUELAYER_ENV);
     console.log("TRUELAYER_BASE_URL:", TRUELAYER_BASE_URL);
+    console.log("TRUELAYER_CLIENT_ID:", process.env.TRUELAYER_CLIENT_ID);
+    console.log("TRUELAYER_REDIRECT_URI:", process.env.TRUELAYER_REDIRECT_URI);
 
     // Generate the auth URL directly - no token needed for initial auth
     console.log("2. Generating auth URL...");
     const nonce = Math.random().toString(36).substring(2, 15);
     const state = Math.random().toString(36).substring(2, 15);
 
+    const authParams = {
+      response_type: "code",
+      client_id: process.env.TRUELAYER_CLIENT_ID!,
+      scope: "info accounts balance cards transactions",
+      redirect_uri: process.env.TRUELAYER_REDIRECT_URI!,
+      providers: "uk-ob-all uk-oauth-all",
+      state,
+      nonce,
+    };
+
+    console.log("Auth parameters:", authParams);
+
     const authUrl =
       `${TRUELAYER_BASE_URL}/auth?` +
-      new URLSearchParams({
-        response_type: "code",
-        client_id: process.env.TRUELAYER_CLIENT_ID!,
-        scope: "info accounts balance cards transactions",
-        redirect_uri: process.env.TRUELAYER_REDIRECT_URI!,
-        providers: "uk-ob-all uk-oauth-all",
-        state,
-        nonce,
-      }).toString();
+      new URLSearchParams(authParams).toString();
 
     console.log("3. Auth URL generated successfully:", authUrl);
     console.log("=== Truelayer Auth Link Creation Complete ===");
 
-    res.json({ authUrl });
+    res.json({ authUrl, state, nonce });
   } catch (error: any) {
     console.error("=== Truelayer Auth Link Creation Failed ===");
     console.error("Error details:", {
