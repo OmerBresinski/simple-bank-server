@@ -14,19 +14,17 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Validate required environment variables
-const requiredEnvVars = ["PLAID_CLIENT_ID", "PLAID_SECRET", "PLAID_ENV"];
-for (const envVar of requiredEnvVars) {
-  if (!process.env[envVar]) {
-    console.error(`Missing required environment variable: ${envVar}`);
-    process.exit(1);
-  }
+// Initialize Plaid client
+console.log("=== Initializing Plaid Client ===");
+const plaidEnv = process.env.PLAID_ENV as keyof typeof PlaidEnvironments;
+if (!PlaidEnvironments[plaidEnv]) {
+  console.error(`Invalid Plaid environment: ${plaidEnv}`);
+  process.exit(1);
 }
 
-// Initialize Plaid client
+console.log(`Plaid environment: ${plaidEnv}`);
 const configuration = new Configuration({
-  basePath:
-    PlaidEnvironments[process.env.PLAID_ENV as keyof typeof PlaidEnvironments],
+  basePath: PlaidEnvironments[plaidEnv],
   baseOptions: {
     headers: {
       "PLAID-CLIENT-ID": process.env.PLAID_CLIENT_ID,
@@ -34,8 +32,8 @@ const configuration = new Configuration({
     },
   },
 });
-
 const plaidClient = new PlaidApi(configuration);
+console.log("Plaid client initialized successfully");
 
 // Middleware
 app.use(cors());
@@ -44,6 +42,17 @@ app.use(express.json());
 // Routes
 const createLinkToken: RequestHandler = async (req, res, next) => {
   try {
+    console.log("=== Starting Link Token Creation ===");
+    console.log("1. Checking environment variables...");
+    console.log("Environment:", {
+      PLAID_CLIENT_ID: process.env.PLAID_CLIENT_ID ? "Set" : "Not Set",
+      PLAID_SECRET: process.env.PLAID_SECRET ? "Set" : "Not Set",
+      PLAID_ENV: process.env.PLAID_ENV,
+      PLAID_PRODUCTS: process.env.PLAID_PRODUCTS,
+      PLAID_COUNTRY_CODES: process.env.PLAID_COUNTRY_CODES,
+    });
+
+    console.log("2. Preparing link token configuration...");
     const configs = {
       user: {
         client_user_id: "user-id",
@@ -56,12 +65,39 @@ const createLinkToken: RequestHandler = async (req, res, next) => {
       language: "en",
       webhook: process.env.PLAID_WEBHOOK_URL,
     };
+    console.log("Link token config:", JSON.stringify(configs, null, 2));
 
+    console.log("3. Creating link token...");
     const response = await plaidClient.linkTokenCreate(configs);
+    console.log("4. Link token created successfully");
+    console.log("Response:", {
+      request_id: response.data.request_id,
+      expiration: response.data.expiration,
+      link_token: response.data.link_token ? "Present" : "Missing",
+    });
+
+    console.log("=== Link Token Creation Complete ===");
     res.json(response.data);
-  } catch (error) {
-    console.error("Error creating link token:", error);
-    res.status(500).json({ error: "Failed to create link token" });
+  } catch (error: any) {
+    console.error("=== Link Token Creation Failed ===");
+    console.error("Error details:", {
+      name: error.name,
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      stack: error.stack,
+    });
+
+    if (error.response?.data) {
+      console.error("Plaid API Error:", error.response.data);
+    }
+
+    res.status(500).json({
+      error: "Failed to create link token",
+      details: error.response?.data || error.message,
+      status: error.response?.status,
+    });
   }
 };
 
