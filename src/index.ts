@@ -37,7 +37,12 @@ const plaidClient = new PlaidApi(configuration);
 console.log("Plaid client initialized successfully");
 
 // Truelayer configuration
-const TRUELAYER_BASE_URL =
+const TRUELAYER_AUTH_URL =
+  process.env.TRUELAYER_ENV === "production"
+    ? "https://auth.truelayer.com"
+    : "https://auth.truelayer-sandbox.com";
+
+const TRUELAYER_API_URL =
   process.env.TRUELAYER_ENV === "production"
     ? "https://api.truelayer.com"
     : "https://api.truelayer-sandbox.com";
@@ -203,7 +208,7 @@ const createTruelayerAuthLink: RequestHandler = async (req, res, next) => {
 
     console.log("Environment variables check passed");
     console.log("TRUELAYER_ENV:", process.env.TRUELAYER_ENV);
-    console.log("TRUELAYER_BASE_URL:", TRUELAYER_BASE_URL);
+    console.log("TRUELAYER_AUTH_URL:", TRUELAYER_AUTH_URL);
     console.log("TRUELAYER_CLIENT_ID:", process.env.TRUELAYER_CLIENT_ID);
     console.log("TRUELAYER_REDIRECT_URI:", process.env.TRUELAYER_REDIRECT_URI);
 
@@ -225,8 +230,7 @@ const createTruelayerAuthLink: RequestHandler = async (req, res, next) => {
     console.log("Auth parameters:", authParams);
 
     const authUrl =
-      `${TRUELAYER_BASE_URL}/auth?` +
-      new URLSearchParams(authParams).toString();
+      `${TRUELAYER_AUTH_URL}/?` + new URLSearchParams(authParams).toString();
 
     console.log("3. Auth URL generated successfully:", authUrl);
     console.log("=== Truelayer Auth Link Creation Complete ===");
@@ -255,23 +259,27 @@ const createTruelayerAuthLink: RequestHandler = async (req, res, next) => {
   }
 };
 
-// Exchange authorization code for access token
+// Update the exchangeTruelayerCode function to use the correct API URL
 const exchangeTruelayerCode: RequestHandler = async (req, res, next) => {
   try {
     const { code } = req.body;
 
+    // Create Basic Auth header
+    const credentials = Buffer.from(
+      `${process.env.TRUELAYER_CLIENT_ID}:${process.env.TRUELAYER_CLIENT_SECRET}`
+    ).toString("base64");
+
     const response = await axios.post(
-      `${TRUELAYER_BASE_URL}/connect/token`,
-      {
-        client_id: process.env.TRUELAYER_CLIENT_ID,
-        client_secret: process.env.TRUELAYER_CLIENT_SECRET,
+      `${TRUELAYER_API_URL}/connect/token`,
+      new URLSearchParams({
         grant_type: "authorization_code",
+        redirect_uri: process.env.TRUELAYER_REDIRECT_URI!,
         code,
-        redirect_uri: process.env.TRUELAYER_REDIRECT_URI,
-      },
+      }).toString(),
       {
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: `Basic ${credentials}`,
         },
       }
     );
@@ -282,7 +290,10 @@ const exchangeTruelayerCode: RequestHandler = async (req, res, next) => {
       "Truelayer Token Exchange Error:",
       error.response?.data || error.message
     );
-    res.status(500).json({ error: "Failed to exchange authorization code" });
+    res.status(500).json({
+      error: "Failed to exchange authorization code",
+      details: error.response?.data || error.message,
+    });
   }
 };
 
@@ -291,7 +302,7 @@ const getTruelayerAccounts: RequestHandler = async (req, res, next) => {
   try {
     const { accessToken } = req.body;
 
-    const response = await axios.get(`${TRUELAYER_BASE_URL}/data/v1/accounts`, {
+    const response = await axios.get(`${TRUELAYER_API_URL}/data/v1/accounts`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
@@ -313,7 +324,7 @@ const getTruelayerTransactions: RequestHandler = async (req, res, next) => {
     const { accessToken, accountId } = req.body;
 
     const response = await axios.get(
-      `${TRUELAYER_BASE_URL}/data/v1/accounts/${accountId}/transactions`,
+      `${TRUELAYER_API_URL}/data/v1/accounts/${accountId}/transactions`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
