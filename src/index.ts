@@ -269,8 +269,12 @@ const exchangeTruelayerCode: RequestHandler = async (req, res, next) => {
       `${process.env.TRUELAYER_CLIENT_ID}:${process.env.TRUELAYER_CLIENT_SECRET}`
     ).toString("base64");
 
+    console.log("Exchanging code for token...");
+    console.log("Using URL:", `${TRUELAYER_AUTH_URL}/connect/token`);
+    console.log("With credentials:", credentials);
+
     const response = await axios.post(
-      `${TRUELAYER_API_URL}/connect/token`,
+      `${TRUELAYER_AUTH_URL}/connect/token`,
       new URLSearchParams({
         grant_type: "authorization_code",
         redirect_uri: process.env.TRUELAYER_REDIRECT_URI!,
@@ -284,12 +288,18 @@ const exchangeTruelayerCode: RequestHandler = async (req, res, next) => {
       }
     );
 
+    console.log("Token exchange successful:", response.data);
     res.json(response.data);
   } catch (error: any) {
     console.error(
       "Truelayer Token Exchange Error:",
       error.response?.data || error.message
     );
+    console.error("Error details:", {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+    });
     res.status(500).json({
       error: "Failed to exchange authorization code",
       details: error.response?.data || error.message,
