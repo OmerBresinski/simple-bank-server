@@ -8,6 +8,7 @@ import {
   CountryCode,
   Products,
 } from "plaid";
+import axios from "axios";
 
 dotenv.config();
 
@@ -34,6 +35,12 @@ const configuration = new Configuration({
 });
 const plaidClient = new PlaidApi(configuration);
 console.log("Plaid client initialized successfully");
+
+// Truelayer configuration
+const TRUELAYER_BASE_URL =
+  process.env.TRUELAYER_ENV === "production"
+    ? "https://api.truelayer.com"
+    : "https://api.truelayer-sandbox.com";
 
 // Middleware
 app.use(cors());
@@ -171,9 +178,133 @@ const getTransactions: RequestHandler = async (req, res, next) => {
   }
 };
 
+// Truelayer endpoints
+const createTruelayerAuthLink: RequestHandler = async (req, res, next) => {
+  try {
+    const response = await axios.post(
+      `${TRUELAYER_BASE_URL}/connect/token`,
+      {
+        client_id: process.env.TRUELAYER_CLIENT_ID,
+        client_secret: process.env.TRUELAYER_CLIENT_SECRET,
+        grant_type: "client_credentials",
+        scope:
+          "accounts balance transactions direct_debits standing_orders cards",
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const accessToken = response.data.access_token;
+
+    const authUrl =
+      `${TRUELAYER_BASE_URL}/connect/auth?` +
+      new URLSearchParams({
+        client_id: process.env.TRUELAYER_CLIENT_ID!,
+        scope:
+          "accounts balance transactions direct_debits standing_orders cards",
+        response_type: "code",
+        redirect_uri: process.env.TRUELAYER_REDIRECT_URI!,
+        providers: "uk-ob-all uk-oauth-all",
+      });
+
+    res.json({ authUrl, accessToken });
+  } catch (error: any) {
+    console.error(
+      "Truelayer Auth Error:",
+      error.response?.data || error.message
+    );
+    res.status(500).json({ error: "Failed to create Truelayer auth link" });
+  }
+};
+
+// Exchange authorization code for access token
+const exchangeTruelayerCode: RequestHandler = async (req, res, next) => {
+  try {
+    const { code } = req.body;
+
+    const response = await axios.post(
+      `${TRUELAYER_BASE_URL}/connect/token`,
+      {
+        client_id: process.env.TRUELAYER_CLIENT_ID,
+        client_secret: process.env.TRUELAYER_CLIENT_SECRET,
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: process.env.TRUELAYER_REDIRECT_URI,
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    res.json(response.data);
+  } catch (error: any) {
+    console.error(
+      "Truelayer Token Exchange Error:",
+      error.response?.data || error.message
+    );
+    res.status(500).json({ error: "Failed to exchange authorization code" });
+  }
+};
+
+// Get Truelayer accounts
+const getTruelayerAccounts: RequestHandler = async (req, res, next) => {
+  try {
+    const { accessToken } = req.body;
+
+    const response = await axios.get(`${TRUELAYER_BASE_URL}/data/v1/accounts`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    res.json(response.data);
+  } catch (error: any) {
+    console.error(
+      "Truelayer Accounts Error:",
+      error.response?.data || error.message
+    );
+    res.status(500).json({ error: "Failed to fetch accounts" });
+  }
+};
+
+// Get Truelayer transactions
+const getTruelayerTransactions: RequestHandler = async (req, res, next) => {
+  try {
+    const { accessToken, accountId } = req.body;
+
+    const response = await axios.get(
+      `${TRUELAYER_BASE_URL}/data/v1/accounts/${accountId}/transactions`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    res.json(response.data);
+  } catch (error: any) {
+    console.error(
+      "Truelayer Transactions Error:",
+      error.response?.data || error.message
+    );
+    res.status(500).json({ error: "Failed to fetch transactions" });
+  }
+};
+
 app.post("/api/create_link_token", createLinkToken);
 app.post("/api/exchange_public_token", exchangePublicToken);
 app.get("/api/transactions", getTransactions);
+
+// Add Truelayer routes
+app.post("/api/truelayer/auth", createTruelayerAuthLink);
+app.post("/api/truelayer/exchange", exchangeTruelayerCode);
+app.post("/api/truelayer/accounts", getTruelayerAccounts);
+app.post("/api/truelayer/transactions", getTruelayerTransactions);
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
