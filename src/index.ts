@@ -52,6 +52,16 @@ const createLinkToken: RequestHandler = async (req, res, next) => {
       PLAID_COUNTRY_CODES: process.env.PLAID_COUNTRY_CODES,
     });
 
+    // Validate country codes
+    const countryCodes = (process.env.PLAID_COUNTRY_CODES || "").split(
+      ","
+    ) as CountryCode[];
+    if (!countryCodes.length || !countryCodes.includes("GB" as CountryCode)) {
+      throw new Error(
+        "GB must be included in country codes for production environment"
+      );
+    }
+
     console.log("2. Preparing link token configuration...");
     const configs = {
       user: {
@@ -59,9 +69,7 @@ const createLinkToken: RequestHandler = async (req, res, next) => {
       },
       client_name: "Simple Bank",
       products: (process.env.PLAID_PRODUCTS || "").split(",") as Products[],
-      country_codes: (process.env.PLAID_COUNTRY_CODES || "").split(
-        ","
-      ) as CountryCode[],
+      country_codes: countryCodes,
       language: "en",
       webhook: process.env.PLAID_WEBHOOK_URL,
     };
