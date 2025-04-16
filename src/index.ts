@@ -52,14 +52,12 @@ const createLinkToken: RequestHandler = async (req, res, next) => {
       PLAID_COUNTRY_CODES: process.env.PLAID_COUNTRY_CODES,
     });
 
-    // Validate country codes
+    // Get country codes from environment variable
     const countryCodes = (process.env.PLAID_COUNTRY_CODES || "").split(
       ","
     ) as CountryCode[];
-    if (!countryCodes.length || !countryCodes.includes("GB" as CountryCode)) {
-      throw new Error(
-        "GB must be included in country codes for production environment"
-      );
+    if (!countryCodes.length) {
+      throw new Error("At least one country code must be specified");
     }
 
     console.log("2. Preparing link token configuration...");
