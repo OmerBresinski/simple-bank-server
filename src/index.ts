@@ -99,7 +99,7 @@ const createTruelayerAuthLink: RequestHandler = async (req, res, next) => {
   }
 };
 
-// Update the exchangeTruelayerCode function to use the correct API URL
+// Update the exchangeTruelayerCode function to store refresh token
 const exchangeTruelayerCode: RequestHandler = async (req, res, next) => {
   try {
     const { code } = req.body;
@@ -147,18 +147,106 @@ const exchangeTruelayerCode: RequestHandler = async (req, res, next) => {
   }
 };
 
-// Get Truelayer accounts
+// Add refresh token endpoint
+const refreshTruelayerToken: RequestHandler = async (req, res, next) => {
+  try {
+    const { refresh_token } = req.body;
+
+    // Create Basic Auth header
+    const credentials = Buffer.from(
+      `${process.env.TRUELAYER_CLIENT_ID}:${process.env.TRUELAYER_CLIENT_SECRET}`
+    ).toString("base64");
+
+    console.log("Refreshing token...");
+    console.log("Using URL:", `${TRUELAYER_AUTH_URL}/connect/token`);
+
+    const response = await axios.post(
+      `${TRUELAYER_AUTH_URL}/connect/token`,
+      new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token,
+      }).toString(),
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: `Basic ${credentials}`,
+        },
+      }
+    );
+
+    console.log("Token refresh successful:", response.data);
+    res.json(response.data);
+  } catch (error: any) {
+    console.error(
+      "Truelayer Token Refresh Error:",
+      error.response?.data || error.message
+    );
+    console.error("Error details:", {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+    });
+    res.status(500).json({
+      error: "Failed to refresh token",
+      details: error.response?.data || error.message,
+    });
+  }
+};
+
+// Update the getTruelayerAccounts function to handle token refresh
 const getTruelayerAccounts: RequestHandler = async (req, res, next) => {
   try {
-    const { accessToken } = req.body;
+    const { accessToken, refreshToken } = req.body;
 
-    const response = await axios.get(`${TRUELAYER_API_URL}/data/v1/accounts`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
+    try {
+      const response = await axios.get(
+        `${TRUELAYER_API_URL}/data/v1/accounts`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+      res.json(response.data);
+    } catch (error: any) {
+      if (error.response?.status === 401 && refreshToken) {
+        // Token expired, try to refresh
+        const refreshResponse = await axios.post(
+          `${TRUELAYER_AUTH_URL}/connect/token`,
+          new URLSearchParams({
+            grant_type: "refresh_token",
+            refresh_token: refreshToken,
+          }).toString(),
+          {
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+              Authorization: `Basic ${Buffer.from(
+                `${process.env.TRUELAYER_CLIENT_ID}:${process.env.TRUELAYER_CLIENT_SECRET}`
+              ).toString("base64")}`,
+            },
+          }
+        );
 
-    res.json(response.data);
+        // Retry the request with the new token
+        const retryResponse = await axios.get(
+          `${TRUELAYER_API_URL}/data/v1/accounts`,
+          {
+            headers: {
+              Authorization: `Bearer ${refreshResponse.data.access_token}`,
+            },
+          }
+        );
+
+        // Return both the data and the new tokens
+        res.json({
+          ...retryResponse.data,
+          newAccessToken: refreshResponse.data.access_token,
+          newRefreshToken: refreshResponse.data.refresh_token,
+        });
+      } else {
+        throw error;
+      }
+    }
   } catch (error: any) {
     console.error(
       "Truelayer Accounts Error:",
@@ -168,10 +256,10 @@ const getTruelayerAccounts: RequestHandler = async (req, res, next) => {
   }
 };
 
-// Get Truelayer transactions
+// Update the getTruelayerTransactions function to handle token refresh
 const getTruelayerTransactions: RequestHandler = async (req, res, next) => {
   try {
-    const { accessToken, accountId } = req.body;
+    const { accessToken, refreshToken, accountId } = req.body;
 
     // Get current date in UTC
     const now = new Date();
@@ -186,7 +274,7 @@ const getTruelayerTransactions: RequestHandler = async (req, res, next) => {
         now.getUTCMonth(),
         now.getUTCDate(),
         now.getUTCHours(),
-        now.getUTCMinutes() - 1, // Subtract 1 minute
+        now.getUTCHours() - 1, // Subtract 1 hour
         now.getUTCSeconds(),
         now.getUTCMilliseconds()
       )
@@ -198,20 +286,63 @@ const getTruelayerTransactions: RequestHandler = async (req, res, next) => {
 
     console.log("Fetching transactions with date range:", { from, to });
 
-    const response = await axios.get(
-      `${TRUELAYER_API_URL}/data/v1/accounts/${accountId}/transactions`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        params: {
-          from,
-          to,
-        },
-      }
-    );
+    try {
+      const response = await axios.get(
+        `${TRUELAYER_API_URL}/data/v1/accounts/${accountId}/transactions`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          params: {
+            from,
+            to,
+          },
+        }
+      );
+      res.json(response.data);
+    } catch (error: any) {
+      if (error.response?.status === 401 && refreshToken) {
+        // Token expired, try to refresh
+        const refreshResponse = await axios.post(
+          `${TRUELAYER_AUTH_URL}/connect/token`,
+          new URLSearchParams({
+            grant_type: "refresh_token",
+            refresh_token: refreshToken,
+          }).toString(),
+          {
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+              Authorization: `Basic ${Buffer.from(
+                `${process.env.TRUELAYER_CLIENT_ID}:${process.env.TRUELAYER_CLIENT_SECRET}`
+              ).toString("base64")}`,
+            },
+          }
+        );
 
-    res.json(response.data);
+        // Retry the request with the new token
+        const retryResponse = await axios.get(
+          `${TRUELAYER_API_URL}/data/v1/accounts/${accountId}/transactions`,
+          {
+            headers: {
+              Authorization: `Bearer ${refreshResponse.data.access_token}`,
+            },
+            params: {
+              from,
+              to,
+            },
+          }
+        );
+
+        // Return both the data and the new tokens
+        res.json({
+          ...retryResponse.data,
+          newAccessToken: refreshResponse.data.access_token,
+          newRefreshToken: refreshResponse.data.refresh_token,
+        });
+      } else {
+        throw error;
+      }
+    }
   } catch (error: any) {
     console.error(
       "Truelayer Transactions Error:",
@@ -224,6 +355,7 @@ const getTruelayerTransactions: RequestHandler = async (req, res, next) => {
 // Add Truelayer routes
 app.post("/api/truelayer/auth", createTruelayerAuthLink);
 app.post("/api/truelayer/exchange", exchangeTruelayerCode);
+app.post("/api/truelayer/refresh", refreshTruelayerToken);
 app.post("/api/truelayer/accounts", getTruelayerAccounts);
 app.post("/api/truelayer/transactions", getTruelayerTransactions);
 
