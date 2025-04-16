@@ -173,28 +173,19 @@ const getTruelayerTransactions: RequestHandler = async (req, res, next) => {
   try {
     const { accessToken, accountId } = req.body;
 
-    // Calculate current month's date range in UTC
+    // Get current date in UTC
     const now = new Date();
-    const currentMonth = now.getUTCMonth();
-    const currentYear = now.getUTCFullYear();
-
-    // Calculate start of current month in UTC
     const startOfCurrentMonth = new Date(
-      Date.UTC(currentYear, currentMonth, 1)
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
     );
+    const endDate = new Date();
 
-    // Use current date in UTC
-    const endDate = new Date(
-      Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate(),
-        23,
-        59,
-        59,
-        999
-      )
-    );
+    // Format dates to ISO string without timezone offset
+    const from =
+      startOfCurrentMonth.toISOString().split("T")[0] + "T00:00:00.000Z";
+    const to = endDate.toISOString().split("T")[0] + "T23:59:59.999Z";
+
+    console.log("Fetching transactions with date range:", { from, to });
 
     const response = await axios.get(
       `${TRUELAYER_API_URL}/data/v1/accounts/${accountId}/transactions`,
@@ -203,8 +194,8 @@ const getTruelayerTransactions: RequestHandler = async (req, res, next) => {
           Authorization: `Bearer ${accessToken}`,
         },
         params: {
-          from: startOfCurrentMonth.toISOString(),
-          to: endDate.toISOString(),
+          from,
+          to,
         },
       }
     );
